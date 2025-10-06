@@ -1,0 +1,5 @@
+beautifulsoup4==4.13.4
+oxylabs==2.0.0
+Requests==2.32.4
+selenium==4.34.2
+webdriver_manager==4.0.2

@@ -1,0 +1,1 @@
+For the google scraper you will have to create an account on serper.dev. If you dont like creating accounts on websites that you are only going to use once, I'd recomened making a proton.me email, its free and very quick setup.

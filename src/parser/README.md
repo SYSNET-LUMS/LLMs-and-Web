@@ -1,0 +1,1 @@
+This folder is deprecated as its files functionality already exist in chatgpt_scraper folder.
