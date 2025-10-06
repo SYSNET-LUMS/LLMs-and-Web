@@ -1,0 +1,25 @@
+{
+  "name": "gpt-stealth",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "chrome-har": "^1.0.1",
+    "chrome-har-capturer": "^0.14.2",
+    "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.0",
+    "playwright": "^1.54.1",
+    "playwright-extra": "^4.3.6",
+    "playwright-extra-plugin-stealth": "^0.0.1",
+    "puppeteer": "^24.14.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "puppeteer-har": "^1.1.2"
+  }
+}
