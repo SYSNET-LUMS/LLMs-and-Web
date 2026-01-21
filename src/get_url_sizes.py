@@ -223,31 +223,111 @@ def parse_headers_raw(raw_lines: List[bytes]) -> Dict[str, str]:
     return headers
 
 
-def measure_url_pycurl(url: str, timeout: int = 30, user_agent: Optional[str] = None, decompress: bool = False) -> Tuple[Optional[int], Optional[int], Dict[str, str], Optional[str]]:
+# import random
+# from typing import Optional, Tuple, Dict, List
+# import pycurl
+
+# keep your parse_headers_raw function (expects list[str]) available
+# def parse_headers_raw(header_lines: List[str]) -> Dict[str,str]: ...
+
+def measure_url_pycurl(
+    url: str,
+    timeout: int = 30,
+    user_agent: Optional[str] = None,
+    decompress: bool = False,
+    referer: Optional[str] = None,
+) -> Tuple[Optional[int], Optional[int], Dict[str, str], Optional[str]]:
     if not HAVE_PYCURL:
         return None, None, {}, 'pycurl not installed'
 
     c = pycurl.Curl()
+    # discard body (you can replace this with a BytesIO to capture body)
     c.setopt(pycurl.WRITEFUNCTION, lambda data: None)
-    header_lines = []
-    c.setopt(pycurl.HEADERFUNCTION, lambda h: header_lines.append(h))
+
+    # capture headers as strings (pycurl/HeaderFunction receives bytes)
+    header_lines: List[str] = []
+    c.setopt(pycurl.HEADERFUNCTION, lambda h: header_lines.append(h.decode('iso-8859-1')))
+
     c.setopt(pycurl.URL, url)
     c.setopt(pycurl.FOLLOWLOCATION, True)
     c.setopt(pycurl.MAXREDIRS, 10)
     c.setopt(pycurl.CONNECTTIMEOUT, 10)
     c.setopt(pycurl.TIMEOUT, timeout)
+
+    # Prevent libcurl from using signals (useful on some platforms)
     try:
         c.setopt(pycurl.NOSIGNAL, 1)
     except Exception:
         pass
 
-    ua = user_agent or 'measure-bot/1.0'
+    # Reasonable TLS defaults
+    c.setopt(pycurl.SSL_VERIFYPEER, 1)
+    c.setopt(pycurl.SSL_VERIFYHOST, 2)
+
+    # modern Chrome-on-Windows user agents (example set)
+    default_uas = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/119.0.0.0 Safari/537.36",
+        # fallback slightly older UA
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/118.0.0.0 Safari/537.36",
+    ]
+
+    if user_agent:
+        ua = user_agent
+    else:
+        ua = random.choice(default_uas)
     c.setopt(pycurl.USERAGENT, ua)
 
+    # Build a realistic header set for Chrome on Windows
+    # Note: pycurl.HTTPHEADER expects a list of "Name: value" strings
+    headers = [
+        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language: en-US,en;q=0.9",
+        "Connection: keep-alive",
+        "Upgrade-Insecure-Requests: 1",
+        # Sec-CH-UA* emulate the client hints Chrome sends (they are strings intentionally)
+        'Sec-CH-UA: "Chromium";v="120", "Google Chrome";v="120", ";Not A Brand";v="99"',
+        'Sec-CH-UA-Mobile: ?0',
+        'Sec-CH-UA-Platform: "Windows"',
+        # Fetch metadata headers common in browsers:
+        "Sec-Fetch-Site: none",
+        "Sec-Fetch-Mode: navigate",
+        "Sec-Fetch-User: ?1",
+        "Sec-Fetch-Dest: document",
+        # optional Referer to appear like a browser navigating from google homepage
+    ]
+
+    # If the user wants to appear to be coming from Google Search
+    if referer is None:
+        # When specifically retrieving from google, set a google referer to look natural:
+        # If you're not actually navigating from google, omit or set to something relevant.
+        referer = "https://www.google.com/"
+    if referer:
+        headers.append(f"Referer: {referer}")
+
+    # Accept-Encoding handling:
+    # - If decompress=True: let libcurl ask for all encodings and decode ('' enables all)
+    # - If decompress=False: ask for identity to receive uncompressed body (or set specific)
     if decompress:
-        c.setopt(pycurl.ACCEPT_ENCODING, '')
+        try:
+            c.setopt(pycurl.ACCEPT_ENCODING, "")  # libcurl will accept and (if built with) decode
+        except Exception:
+            # older pycurl may not support ACCEPT_ENCODING; fallback to header
+            headers.append("Accept-Encoding: br, gzip, deflate")
     else:
-        c.setopt(pycurl.HTTPHEADER, ['Accept-Encoding: gzip, deflate'])
+        # request no compression so you get raw bytes (server may still gzip depending on config)
+        headers.append("Accept-Encoding: identity")
+
+    # Attach headers to the request
+    c.setopt(pycurl.HTTPHEADER, headers)
+
+    # Optional: let libcurl handle cookies automatically (simulate browser session)
+    # If you want a persistent jar across runs, point to a file path.
+    c.setopt(pycurl.COOKIEFILE, "")   # empty string tells libcurl to enable cookie engine
+    c.setopt(pycurl.COOKIEJAR, "")    # keep cookies in memory; set filename to persist
 
     try:
         c.perform()
@@ -264,35 +344,115 @@ def measure_url_pycurl(url: str, timeout: int = 30, user_agent: Optional[str] = 
         return None, None, {}, f'pycurl error: {e}'
 
 
-def measure_url_requests(url: str, timeout: int = 30, user_agent: Optional[str] = None, decompress: bool = False) -> Tuple[Optional[int], Optional[int], Dict[str, str], Optional[str]]:
+
+def measure_url_requests(
+    url: str,
+    timeout: int = 30,
+    user_agent: Optional[str] = None,
+    decompress: bool = False
+) -> Tuple[Optional[int], Optional[int], Dict[str, str], Optional[str]]:
+    """
+    Measure download size and status code using `requests`.
+
+    Returns: (size_bytes_or_None, status_code_or_None, headers_dict_lowercased, error_or_None)
+    """
     if not HAVE_REQUESTS:
         return None, None, {}, 'requests not installed'
-    headers = {'Accept-Encoding': 'gzip, deflate', 'User-Agent': user_agent or 'measure-bot/1.0'}
+
+    # modern Chrome-on-Windows user agents (pick randomly if not provided)
+    default_uas = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/118.0.0.0 Safari/537.36",
+    ]
+
+    ua = user_agent or random.choice(default_uas)
+
+    # create realistic Chrome-like headers
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        # Chrome client hints (string values)
+        "Sec-CH-UA": '"Chromium";v="120", "Google Chrome";v="120", ";Not A Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        # Fetch metadata
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Dest": "document",
+    }
+
+    # Accept-Encoding handling:
+    if decompress:
+        # ask for modern encodings and let requests/libhttp handle decoding if available
+        headers["Accept-Encoding"] = "br, gzip, deflate"
+    else:
+        # request identity so we receive raw bytes (servers may ignore this)
+        headers["Accept-Encoding"] = "identity"
+
+    # If the target looks like google, add a google referer to emulate navigation from search
     try:
-        with requests.get(url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as r:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if "google." in hostname:
+            headers["Referer"] = "https://www.google.com/"
+    except Exception:
+        # ignore parse errors and don't set Referer
+        pass
+
+    # Use a session to enable cookie handling, connection pooling
+    session = requests.Session()
+    session.headers.update(headers)
+    session.verify = True
+    # avoid inheriting system proxies / env unless you want them
+    session.trust_env = False
+
+    # Use a sensible connect timeout (10s) and overall/read timeout passed in
+    timeout_tuple = (10, timeout)
+
+    try:
+        with session.get(url, stream=True, timeout=timeout_tuple, allow_redirects=True) as r:
+            status = int(r.status_code)
+
+            # When decompress=False we try to read raw bytes without requests auto-decompression.
             if not decompress:
                 try:
+                    # r.raw is a urllib3.response.HTTPResponse
                     raw = r.raw
+                    # disable urllib3/requests automatic decoding of the raw stream
+                    # so we measure exact bytes received on the wire (may still be chunked/encoded by server)
                     raw.decode_content = False
                     total = 0
+                    chunk_size = 8192
                     while True:
-                        chunk = raw.read(8192)
+                        chunk = raw.read(chunk_size)
                         if not chunk:
                             break
+                        # chunk is bytes
                         total += len(chunk)
-                    return int(total), int(r.status_code), {k.lower(): v for k, v in r.headers.items()}, None
+                    return int(total), status, {k.lower(): v for k, v in r.headers.items()}, None
                 except Exception:
+                    # fallback if raw.read fails for any reason: iterate (requests may decode based on headers)
                     total = 0
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             total += len(chunk)
-                    return int(total), int(r.status_code), {k.lower(): v for k, v in r.headers.items()}, None
+                    return int(total), status, {k.lower(): v for k, v in r.headers.items()}, None
             else:
+                # decompress=True -> allow requests to decode compressed body (if supported)
                 total = 0
                 for chunk in r.iter_content(chunk_size=8192):
                     if chunk:
                         total += len(chunk)
-                return int(total), int(r.status_code), {k.lower(): v for k, v in r.headers.items()}, None
+                return int(total), status, {k.lower(): v for k, v in r.headers.items()}, None
+
     except Exception as e:
         return None, None, {}, f'requests error: {e}'
 
@@ -372,6 +532,16 @@ def worker_wrapper(meta_path: str, url: str, meta: dict, attempt: int, timeout: 
                 res['note'] = (note or '') + f' 403 -> exponential backoff {delay}s (attempt {attempt}/{max_retries_403})'
             else:
                 res['note'] = (note or '') + f' 403 -> max retries exceeded ({max_retries_403})'
+
+        elif status == None:
+            if attempt < 3:
+                delay = 2 * (2 ** (attempt - 1))
+                res['final'] = False
+                res['retry'] = True
+                res['retry_delay'] = delay
+                res['note'] = (note or '') + f' SNone -> exponential backoff {delay}s (attempt {attempt}/{3})'
+            else:
+                res['note'] = (note or '') + f' SNone -> max retries exceeded ({3})'
 
         # Determine is_cited: normalize current URL and check meta['cited_set']
         normalized = normalize_url_for_compare(url)
@@ -459,6 +629,8 @@ def ui_thread_fn(total_urls: int, poll_interval: float = 0.5):
                     short = short[:117] + '...'
                 out_lines.append(f"{slot_id}: {short}")
 
+
+            # total_urls = 50000
             out_lines.append('')
             out_lines.append(f"Total URLs: {comp}/{total_urls} {bar} ({pct:.1f}%)")
 
@@ -567,7 +739,7 @@ def main():
         completed_count = len(completed_set)
 
     # remaining total shown to UI is total_urls_all - already completed
-    total_urls = max(0, total_urls_all - len(completed_set))
+    total_urls = max(0, total_urls_all)
 
     # open CSV (note is_cited column) - open in append mode so we don't overwrite previous results
     out_exists = os.path.exists(args.output)
@@ -637,6 +809,8 @@ def main():
             # prepare per-top-level subdir lists
             per_top_subdirs = {}
             for top in top_level_dirs:
+                if "abstain" in top:
+                    continue
                 try:
                     subdirs = [str(p) for p in Path(top).iterdir() if p.is_dir()]
                 except Exception:

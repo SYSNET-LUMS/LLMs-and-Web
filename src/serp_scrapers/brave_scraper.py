@@ -224,7 +224,6 @@ def scrape_brave_to_csv(query, output_file, max_results, page_size=20):
             page_index += 1
         except Exception as e:
             print(f"Error on page {page_index}: {e}. Retrying after delay.")
-            break
         time.sleep(random.uniform(*delay_range))
 
     print(f"\nDone! {total_written} total results saved to {output_file}")

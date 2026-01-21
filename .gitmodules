@@ -1,0 +1,3 @@
+[submodule "webhost"]
+	path = webhost
+	url = git@github.com:Bakhbooti-AISA/Web-Hosting-LLM-Indexing.git

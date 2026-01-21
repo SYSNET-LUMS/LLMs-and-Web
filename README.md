@@ -1,57 +1,98 @@
-## LLM Web Traffic Tracking Tool Kit
+# LLM Web Traffic Tracking Toolkit
 
-## Overview
+Tools for tracking and studying **LLM web search behavior** by:
 
-This project contains variouse tool useful for tracking and studiying LLM Websearch. The main content of the project can be found in the src file which contain the SERP web scrapers and LLM web interface scrapers.
-
-#### `main.py` Usage:
-
-Use help flag for all `main.py` params, but as a guide here is a example use 
-```bash
-python3 main.py --har-files dellsupport.har beetjuice.har -s google bing -m 500 -i 50 -o results
-``` 
-
-- -s for selecting SE
-- -m for max index to scrap till
-- -i scrap batch size (dont go over 50 as results get a bit strages above that)
-- -o output 
-
-NOTE: For google scraping we use serper.dev API. Need to setup .env file to use. Check SERP Scrapers section for info
-
-
-#### SERP Web Scrapers
-
-They are two scraping tool:
-1. bing_scraper.py -> Uses python requests module to simply send a get request to bings search engien.
-2. google_scraper.py -> Uses serper.dev SERP API (needed to use an online servise as Googles website gardes against bots very strictly). Will have to create an account on there website to use (2500 free requests). Creat .env in root of dir with API_KEY="serper.api.from.your.account"
-
-#### LLM Web Interface Scrapers	
-
-#### Helpful Points
-- Query = Search engine search. User prompt = what user writes to the LLM. Technially "Query" can be used for both but for sake of code understanding, we can make the definitions as such.
-- An important note: very, Very, VERY much recomened to use a VPN or proxy while using SERP scrapers, as overuse can get your IP banned from the search engine.
-- `old_main.py` is deprecated, only there to be viewed for reference.
-- 
-
-## LLM Search Automation
-
-Run **LLM web-search experiments** with:
-- **ChatGPT** (chatgpt.com)
-- **Claude** (claude.ai)
-
-Pipeline:
-1) Prepare ORCAS-I per-label CSVs  
-2) **GPT**: query with web search; capture **HAR + SSE + answers**  
-3) **Claude**: query (web on by default); capture **HAR + SSE**; **reconstruct** answers from SSE
-
-> **Claude deletion:** Use GUI **Select all → Delete all chats** (no script).  
-> **Claude answers:** Reconstructed post-run from SSE because UI save isn’t reliable.
+* running automated web-search experiments (ChatGPT / Claude),
+* extracting queries + visited URLs from session logs (HAR/SSE),
+* scraping search engine result pages (SERPs),
+* matching/evaluating accessed URLs vs. SERP rankings,
+* generating stats + visualizations.
 
 ---
 
-## Requirements
+## Table of Contents
 
-- **Node.js** ≥ 18, **Python** ≥ 3.9, **Chrome/Chromium**
+1. [Repo Layout](#1-repo-layout)
+
+2. [LLM Search Automation (`LLM_search_automation/`)](#2-llm-search-automation-llm_search_automation)
+   - 2.1. [Pipeline Overview](#21-pipeline-overview)
+   - 2.2. [Requirements](#22-requirements)
+   - 2.3. [Data Preparation (`data/`)](#23-data-preparation-data)
+   - 2.4. [GPT Automation (`GPT/`)](#24-gpt-automation-gpt)
+   - 2.5. [Claude Automation (`Claude/`)](#25-claude-automation-claude)
+   - 2.6. [Outputs & Conventions](#26-outputs--conventions)
+   - 2.7. [Troubleshooting & Tips](#27-troubleshooting--tips)
+
+3. [SERP Scraping and Matching (`src/`)](#3-serp-scraping-and-matching-src)
+   - 3.1. [Quick Start: Using Pre-Generated Data](#31-quick-start-using-pre-generated-data)
+   - 3.2. [`main.py` (HAR → SERP → URL Evaluation)](#32-mainpy-har--serp--url-evaluation)
+   - 3.3. [SERP Scrapers](#33-serp-scrapers)
+   - 3.4. [Environment Setup (`.env`)](#34-environment-setup-env)
+
+4. [Generating Stats](#4-generating-stats)
+   - 4.1. [Organize Results Directory](#41-organize-results-directory)
+   - 4.2. [Aggregate to JSON (`a.py`)](#42-aggregate-to-json-apy)
+   - 4.3. [Run Notebooks](#43-run-notebooks)
+
+
+---
+
+## 1. Repo Layout
+
+```text
+LLM_search_automation/     # ChatGPT/Claude web-search automation (HAR + SSE capture)
+src/                       # SERP scraping, matching, evaluation, datasets, results
+stats.ipynb                # Analysis notebook (uses aggregated JSON)
+accessed_urls_stats.ipynb  # Analysis notebook (uses aggregated JSON)
+```
+
+### 1.1 Terminology
+
+* **Prompt**: what you send to the LLM.
+* **Query**: what the LLM (or you) submits to a search engine.
+
+### 1.2 Operational note
+
+You are strongly encouraged to use a **VPN/proxy** when scraping SERPs to reduce the chance of IP blocking.
+
+---
+
+## 2. LLM Search Automation (`LLM_search_automation/`)
+
+Run **LLM web-search experiments** and capture:
+
+* **HAR** network logs
+* **SSE** (streamed deltas) where available
+* **answers** (or reconstructed answers for Claude)
+
+Supported:
+
+* **ChatGPT** (chatgpt.com)
+* **Claude** (claude.ai)
+
+---
+
+### 2.1 Pipeline Overview
+
+1. Prepare ORCAS-I per-label CSVs
+2. **ChatGPT**: query with web search; capture **HAR + SSE + answers**
+3. **Claude**: query (web on by default); capture **HAR + SSE**; **reconstruct** answers from SSE
+
+Notes:
+
+* **Claude deletion:** GUI **Select all → Delete all chats** (no script)
+* **Claude answers:** reconstructed post-run from SSE because UI save isn’t reliable
+
+---
+
+### 2.2 Requirements
+
+* **Node.js ≥ 18**
+* **Python ≥ 3.9**
+* **Chrome/Chromium**
+
+Install deps:
+
 ```bash
 npm install puppeteer-extra puppeteer-extra-plugin-stealth puppeteer-har csv-parse dotenv
 pip install pandas
@@ -59,76 +100,91 @@ pip install pandas
 
 ---
 
-## Data Preparation (`data/`)
+### 2.3 Data Preparation (`data/`)
 
-- **Input:** `ORCAS-I-gold.tsv` (`label_manual` column)  
-- **Script:** `create_csvs.py` → shuffles; splits to `data/by_label_csvs/`
+* **Input:** `ORCAS-I-gold.tsv` (must include `label_manual`)
+* **Script:** `create_csvs.py` → shuffles + splits into `data/by_label_csvs/`
+
 ```bash
-cd data
+cd LLM_search_automation/data
 python create_csvs.py
 cd ..
 ```
 
-**Organize dataset** (copy label CSVs for a run):
+Organize dataset CSVs for a run:
+
 ```bash
 mkdir -p dataset
 cp data/by_label_csvs/*.csv dataset/
 ```
-> Repeat per run as needed.
 
 ---
 
-## GPT Automation (`GPT/`)
+### 2.4 GPT Automation (`GPT/`)
 
-Use: `sign_in.js` (one-time), `index.js` (main), `delete_chats.js` (optional).
+#### 2.4.1 One-time sign-in
 
-**1) One-time sign-in** — create `GPT/.env`:
+Create `LLM_search_automation/GPT/.env`:
+
 ```ini
 OPENAI_EMAIL=your_email@example.com
 OPENAI_PASSWORD=your_password
 ```
+
+Run:
+
 ```bash
-cd GPT
+cd LLM_search_automation/GPT
 node sign_in.js
 ```
-(Complete 2FA if prompted; session persists in `./puppeteer-profile`.)
 
-**2) Configure CSVs** — edit `GPT/index.js`:
+Session persists in `./puppeteer-profile` (complete 2FA if prompted).
+
+#### 2.4.2 Configure jobs (edit `GPT/index.js`)
+
 ```js
-const modelName = "gpt-5"
-const datasetRunNum = "1"
+const modelName = "gpt-5";
+const datasetRunNum = "1";
 const csvJobs = [
   { file: `./dataset/ORCAS-I-gold_label_Abstain.csv`, outDir: `abstain_${modelName}_${datasetRunNum}` },
-  { file: `./dataset/ORCAS-I-gold_label_Factual.csv`, outDir: `abstain_${modelName}_${datasetRunNum}` }
+  { file: `./dataset/ORCAS-I-gold_label_Factual.csv`,  outDir: `factual_${modelName}_${datasetRunNum}` }
 ];
 ```
 
-**3) Run**
+#### 2.4.3 Run
+
 ```bash
 node index.js
 ```
-Actions: enables **Web search** (“+ → More → Web search”), sends each CSV `query`, saves per-prompt **HAR** (SSE injected) + **response**, plus `prompts.jsonl`, `prompts.txt`, `source_meta.txt`.
 
-**4) Optional cleanup**
+What it does:
+
+* enables **Web search** in UI (“+ → More → Web search”)
+* sends each CSV query as a prompt
+* saves per-prompt **HAR** (SSE injected) + **response**
+* writes `prompts.jsonl`, `prompts.txt`, `source_meta.txt`
+
+#### 2.4.4 Optional cleanup
+
 ```bash
 node delete_chats.js
 ```
 
 ---
 
-## Claude Automation (`Claude/`)
+### 2.5 Claude Automation (`Claude/`)
 
-Use: `sign_in.js` (manual login), `index.js` (run), `reconstruct_answers.py` (SSE → final text).  
-> **No deletion script** (use GUI Select all → Delete all).
+#### 2.5.1 One-time sign-in
 
-**1) One-time sign-in**
 ```bash
-cd Claude
+cd LLM_search_automation/Claude
 node sign_in.js
 ```
-(Manual login; session persists in `./puppeteer-profile-claude`.)
 
-**2) Configure model + CSVs** — `Claude/index.js`:
+Session persists in `./puppeteer-profile-claude`.
+
+#### 2.5.2 Configure jobs (edit `Claude/index.js`)
+
 ```js
 const modelName = "opus-4.1";
 const datasetRunNum = "1";
@@ -136,37 +192,251 @@ const csvJobs = [
   { file: `./dataset/ORCAS-I-gold_label_Factual.csv`, outDir: `factual_${modelName}_${datasetRunNum}` }
 ];
 ```
-*(Web access is on by default.)*
 
-**3) Run**
+#### 2.5.3 Run
+
 ```bash
 node index.js
 ```
+
 Captures per-prompt **HAR** (SSE injected) + visible answer (may be `[no answer captured]` pre-reconstruction).
 
-**4) Reconstruct answers**
+#### 2.5.4 Reconstruct answers
+
 ```bash
 python reconstruct_answers.py
 ```
-Parses Claude HAR SSE, concatenates text deltas, and replaces `[no answer captured]` in response files.
+
+Parses Claude HAR SSE deltas, concatenates final text, and replaces `[no answer captured]` in response files.
 
 ---
 
-## Outputs & Conventions
+### 2.6 Outputs & Conventions
 
 For each `(category, model, run)`:
-- `<category>_<model>_<run>/`
-  - `<category>_hars_<model>_<run>/` — per-prompt **HAR** (SSE injected)
-  - `<category>_responses_<model>_<run>/` — **response-*.txt**
-  - `prompts.jsonl`, `prompts.txt`, `source_meta.txt`
 
-One prompt → one HAR + one response. Add more entries to `csvJobs` for multiple categories/runs.
+```text
+<category>_<model>_<run>/
+  <category>_hars_<model>_<run>/       # per-prompt HAR (SSE injected)
+  <category>_responses_<model>_<run>/  # response-*.txt
+  prompts.jsonl
+  prompts.txt
+  source_meta.txt
+```
 
 ---
 
-## Troubleshooting & Tips
+### 2.7 Troubleshooting & Tips
 
-- **Selectors change:** Update selectors/text lookups if DOM shifts.  
-- **Timeouts/flakiness:** Raise timeouts, add `sleep`, or use smaller CSVs.  
-- **Concurrency:** Prefer single visible browser (serial prompts).  
-- **Claude deletion:** Use GUI **Select all → Delete all chats**.
+* **Selectors change:** update selectors/text lookups if DOM shifts.
+* **Timeouts/flakiness:** increase timeouts, add sleeps, or run smaller CSVs.
+* **Concurrency:** prefer serial prompts with one visible browser.
+* **Claude deletion:** GUI **Select all → Delete all chats**.
+
+---
+
+## 3. SERP Scraping and Matching (`src/`)
+
+`src/` contains:
+
+* SERP scrapers (Bing/Google/Brave)
+* tooling to process HAR files
+* matching/evaluation code (accessed URLs vs SERP ranks)
+* `datasets/` and `results/` folders
+
+---
+
+### 3.1 Quick Start: Using Pre-Generated Data
+
+If you don’t want to run automation, download pre-generated HAR files from the Google Drive link referenced in:
+
+* `src/dataset/README.md`
+
+After downloading:
+
+* extract HAR files → `src/datasets/`
+* extract result folders → `src/results/` organized by category (`abstain/`, `factual/`, etc.)
+
+---
+
+### 3.2 `main.py` (HAR → SERP → URL Evaluation)
+
+`main.py`:
+
+1. parses HAR files from LLM web-search sessions
+2. extracts search queries
+3. scrapes SERP results for those queries
+4. evaluates accessed URLs against SERP results
+5. writes CSV outputs + evaluation reports
+
+#### 3.2.1 Basic usage
+
+```bash
+python3 main.py --har-files dellsupport.har beetjuice.har -s google bing -m 500 -i 50 -o results
+```
+
+#### 3.2.2 Parameters
+
+* `--har-files` (**required**): list of `.har` files to process
+* `-s, --search-engines`: default `['bing','google']` — choose from `bing`, `google`, `brave`, `ddg`
+* `-m, --max-se-index`: max SERP rank index to scrape up to (default: 250)
+* `-i, --index-interval`: batch size for scraping (recommend ≤ 50) (default: 50)
+* `-o, --output-dir`: output directory (default: `outputs`)
+* `-l, --logs-print`: enable detailed logging (default: False)
+
+#### 3.2.3 Output structure
+
+Example:
+
+```text
+outputs/harname_20260121_120000/
+  harname_idx_engine_query.csv
+  urls_to_eval_20260121_120000.txt
+  evaluation_results_20260121_120000.txt
+  query_meta.json
+```
+
+---
+
+### 3.3 SERP Scrapers
+
+Available scrapers:
+
+1. `bing_scraper.py` — WebScrapingAPI (WSA_API_KEY) or Oxylabs (OXY_USERNAME/OXY_PASSWORD)
+2. `google_scraper.py` — serper.dev (API_KEY)
+3. `brave_scraper.py` — WebScrapingAPI or Brave API (BRAVE_API_KEY)
+
+---
+
+### 3.4 Environment Setup (`.env`)
+
+Create a `.env` file in the repo root:
+
+```ini
+# Google (serper.dev) — REQUIRED for --search-engines google
+API_KEY=your_serper_api_key_here
+
+# Bing & Brave (WebScrapingAPI) — OPTIONAL, used if OXY credentials not set
+WSA_API_KEY=your_webscrapingapi_key_here
+
+# Bing (Oxylabs Proxy) — OPTIONAL alternative to WebScrapingAPI
+OXY_USERNAME=your_oxylabs_username
+OXY_PASSWORD=your_oxylabs_password
+
+# Brave (Brave Official API) — OPTIONAL, used as fallback
+BRAVE_API_KEY=your_brave_api_key_here
+```
+
+Providers:
+
+* serper.dev: [https://serper.dev/](https://serper.dev/)
+* WebScrapingAPI: [https://www.webscrapingapi.com/](https://www.webscrapingapi.com/)
+* Oxylabs: [https://oxylabs.io/](https://oxylabs.io/)
+* Brave API: [https://api.search.brave.com/](https://api.search.brave.com/)
+
+---
+
+## 4. Generating Stats
+
+Stats generation is:
+
+1. organize `main.py` outputs into `src/results/<category>/...`
+2. run `a.py` to create `aggregated_data.json`
+3. analyze in notebooks
+
+---
+
+### 4.1 Organize Results Directory
+
+Place `main.py` outputs under category folders:
+
+```text
+src/results/
+  abstain/
+    network-logs-prompt-1_20260121_120000/
+      abstain_1_bing_query.csv
+      abstain_1_google_query.csv
+      abstain_1_brave_query.csv
+      urls_to_eval_20260121_120000.txt
+      evaluation_results_20260121_120000.txt
+      query_meta.json
+  factual/
+    network-logs-prompt-*_*/
+      ...
+```
+
+#### 4.1.1 Required files per run folder
+
+* `*.csv` — SERP results from scrapers
+* `urls_to_eval_*.txt` — deduped URLs accessed during session
+* `evaluation_results_*.txt` — evaluation report
+* `query_meta.json` (or `*_meta.json`) — cited URLs + search strings
+
+---
+
+### 4.2 Aggregate to JSON (`a.py`)
+
+Run:
+
+```bash
+cd src/results
+python a.py
+```
+
+Creates:
+
+* `src/results/aggregated_data.json`
+
+#### 4.2.1 JSON structure (example)
+
+```json
+{
+  "abstain": {
+    "network-logs-prompt-1_20260121_120000": {
+      "urls_from_prompt": ["https://example.com/page1"],
+      "urls_cited": ["https://example.com/page1"],
+      "search_string": ["query one", "query two"],
+      "bing_urls": [
+        { "url": "https://example.com/page1", "page_title": "Page Title", "rank": 1, "search_string_num": 1 }
+      ],
+      "google_urls": [],
+      "brave_urls": []
+    }
+  }
+}
+```
+
+---
+
+### 4.3 Run Notebooks
+
+In `stats.ipynb` and `accessed_urls_stats.ipynb`:
+
+```python
+import json
+
+with open('aggregated_data.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+category = "abstain"
+prompt_id = "network-logs-prompt-1_20260121_120000"
+entry = data[category][prompt_id]
+
+urls_cited = entry["urls_cited"]
+search_queries = entry["search_string"]
+bing_results = entry["bing_urls"]
+google_results = entry["google_urls"]
+brave_results = entry["brave_urls"]
+```
+
+Example analyses:
+
+* accessed URLs vs SERP coverage (by rank)
+* citation patterns by category
+* search engine performance comparisons
+* accessed vs cited URL overlap
+
+---
+
+Accepted at *WWW 2026*.  
+Camera-ready version forthcoming.

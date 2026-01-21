@@ -344,7 +344,7 @@ def scrape_bing_to_csv(query, output_file, max_results, batch_size):
 
         except Exception as e:
             print(f"Error at offset {offset}: {e}. Retrying after delay.")
-            break
+            continue
         break
         # time.sleep(random.uniform(*delay_range))
 

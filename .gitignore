@@ -2,3 +2,7 @@
 .venv*
 dev_tools
 __pycache__
+images/
+resolve*/
+stats.ipynb
+aggregated_data*
