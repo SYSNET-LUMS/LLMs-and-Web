@@ -438,5 +438,23 @@ Example analyses:
 
 ---
 
-Accepted at *WWW 2026*.  
-Camera-ready version forthcoming.
+Citation
+
+If you use this research or the associated data/tools in your work, please cite the following paper:
+
+https://doi.org/10.1145/3774904.3792278
+
+BibTeX
+Code snippet
+```BibTeX
+@inproceedings{sayyidali2026llm,
+  author    = {Sayyid-Ali, Abdur-Rahman Ibrahim and Khan, Daanish Uddin and Bhatti, Naveed Anwar},
+  title     = {Are LLM Web Search Engines Sustainable? A Web-Measurement Study of Real-Time Fetching},
+  booktitle = {Proceedings of the ACM Web Conference 2026 (WWW '26)},
+  year      = {2026},
+  address   = {Dubai, United Arab Emirates},
+  publisher = {ACM},
+  doi       = {10.1145/3774904.3792278},
+  url       = {https://doi.org/10.1145/3774904.3792278}
+}
+```
