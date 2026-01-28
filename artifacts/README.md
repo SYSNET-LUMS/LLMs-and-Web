@@ -91,7 +91,45 @@ LIMIT 10;
 This is the recommended approach for large-scale analysis.
 
 
+#### Schema
 
+###### `har`
+
+| column | type | nullable |
+|---|---|---|
+| `category_id` | `VARCHAR` | yes |
+| `har_id` | `VARCHAR` | yes |
+
+###### `url_event`
+
+| column | type | nullable |
+|---|---|---|
+| `category_id` | `VARCHAR` | yes |
+| `har_id` | `VARCHAR` | yes |
+| `source` | `VARCHAR` | yes |
+| `url` | `VARCHAR` | yes |
+| `position` | `INTEGER` | yes |
+
+###### `search_string`
+
+| column | type | nullable |
+|---|---|---|
+| `category_id` | `VARCHAR` | yes |
+| `har_id` | `VARCHAR` | yes |
+| `search_string_num` | `INTEGER` | yes |
+| `search_string` | `VARCHAR` | yes |
+
+###### `serp_result`
+
+| column | type | nullable |
+|---|---|---|
+| `category_id` | `VARCHAR` | yes |
+| `har_id` | `VARCHAR` | yes |
+| `engine` | `VARCHAR` | yes |
+| `search_string_num` | `INTEGER` | yes |
+| `rank` | `INTEGER` | yes |
+| `url` | `VARCHAR` | yes |
+| `page_title` | `VARCHAR` | yes |
 
 
 ## Text Responses
